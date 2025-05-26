@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .editor-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #30363d;
+        }
+
+        .chat-panel {
+            width: 350px;
+            background: #161b22;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #30363d;
+        }
+
+        .toolbar {
+            background: #21262d;
+            padding: 10px 15px;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .toolbar h1 {
+            font-size: 16px;
+            color: #58a6ff;
+        }
+
+        .language-select {
+            background: #30363d;
+            border: 1px solid #484f58;
+            color: #c9d1d9;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .ai-status {
+            margin-left: auto;
+            font-size: 12px;
+            color: #7c3aed;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .ai-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #7c3aed;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .editor-container {
+            flex: 1;
+            position: relative;
+            background: #0d1117;
+        }
+
+        .editor {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #c9d1d9;
+            padding: 20px;
+            resize: none;
+            tab-size: 4;
+        }
+
+        .suggestions {
+            position: absolute;
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .suggestion-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .suggestion-item:hover {
+            background: #30363d;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-type {
+            background: #7c3aed;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .chat-header {
+            background: #21262d;
+            padding: 15px;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .chat-header h2 {
+            font-size: 14px;
+            color: #58a6ff;
+            margin-bottom: 5px;
+        }
+
+        .chat-status {
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 90%;
+        }
+
+        .message.user {
+            background: #1f6feb;
+            margin-left: auto;
+            color: white;
+        }
+
+        .message.ai {
+            background: #21262d;
+            border: 1px solid #30363d;
+        }
+
+        .message-content {
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .chat-input-container {
+            padding: 15px;
+            border-top: 1px solid #30363d;
+        }
+
+        .chat-input {
+            width: 100%;
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 10px;
+            color: #c9d1d9;
+            font-size: 13px;
+            resize: none;
+            min-height: 60px;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+
+        .send-button {
+            background: #238636;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-top: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            float: right;
+        }
+
+        .send-button:hover {
+            background: #2ea043;
+        }
+
+        .send-button:disabled {
+            background: #484f58;
+            cursor: not-allowed;
+        }
+
+        .learning-progress {
+            background: #21262d;
+            padding: 10px 15px;
+            border-top: 1px solid #30363d;
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #30363d;
+            border-radius: 2px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #7c3aed, #a855f7);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        /* Syntax highlighting styles */
+        .keyword { color: #ff7b72; }
+        .string { color: #a5d6ff; }
+        .comment { color: #8b949e; font-style: italic; }
+        .number { color: #79c0ff; }
+        .function { color: #d2a8ff; }
+        .operator { color: #ff7b72; }
+        .variable { color: #ffa657; }
+
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            color: #7d8590;
+            font-style: italic;
+            font-size: 12px;
+        }
+
+        .typing-dots {
+            display: inline-block;
+        }
+
+        .typing-dots::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="editor-panel">
+            <div class="toolbar">
+                <h1>🤖 AI Code Editor</h1>
+                <select class="language-select" id="languageSelect">
+                    <option value="javascript">JavaScript</option>
+                    <option value="python">Python</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                </select>
+                <div class="ai-status">
+                    <div class="ai-indicator"></div>
+                    AI Learning Active
+                </div>
+            </div>
+            <div class="editor-container">
+                <textarea class="editor" id="codeEditor" placeholder="Start typing your code here...
+
+// The AI will learn from your coding patterns and provide personalized suggestions
+// Try typing 'function', 'class', or 'for' to see AI suggestions
+
+function example() {
+    console.log('Hello, AI!');
+}"></textarea>
+                <div class="suggestions" id="suggestions"></div>
+            </div>
+        </div>
+
+        <div class="chat-panel">
+            <div class="chat-header">
+                <h2>💬 AI Assistant</h2>
+                <div class="chat-status">Ready to help with your code</div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message ai">
+                    <div class="message-content">
+                        Hello! I'm your AI coding assistant. I'm learning from your code patterns to provide personalized suggestions. Feel free to ask me anything about programming!
+                    </div>
+                    <div class="message-time">Just now</div>
+                </div>
+            </div>
+            <div class="typing-indicator" id="typingIndicator">
+                <span class="typing-dots">AI is thinking</span>
+            </div>
+            <div class="chat-input-container">
+                <textarea class="chat-input" id="chatInput" placeholder="Ask me about your code, request suggestions, or get help with programming concepts..."></textarea>
+                <button class="send-button" id="sendButton">Send</button>
+            </div>
+            <div class="learning-progress">
+                <div>Learning Progress: <span id="learningPercent">0%</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class AICodeEditor {
+            constructor() {
+                this.editor = document.getElementById('codeEditor');
+                this.suggestions = document.getElementById('suggestions');
+                this.chatMessages = document.getElementById('chatMessages');
+                this.chatInput = document.getElementById('chatInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.languageSelect = document.getElementById('languageSelect');
+                this.typingIndicator = document.getElementById('typingIndicator');
+                this.progressFill = document.getElementById('progressFill');
+                this.learningPercent = document.getElementById('learningPercent');
+
+                this.model = null;
+                this.learningData = [];
+                this.codePatterns = new Map();
+                this.suggestionCache = new Map();
+                this.currentLanguage = 'javascript';
+                this.learningProgress = 0;
+
+                this.init();
+            }
+
+            async init() {
+                await this.initializeML();
+                this.setupEventListeners();
+                this.loadSavedData();
+                this.startLearning();
+            }
+
+            async initializeML() {
+                try {
+                    // Create a simple neural network for code suggestion
+                    this.model = tf.sequential({
+                        layers: [
+                            tf.layers.dense({ inputShape: [100], units: 64, activation: 'relu' }),
+                            tf.layers.dropout({ rate: 0.2 }),
+                            tf.layers.dense({ units: 32, activation: 'relu' }),
+                            tf.layers.dense({ units: 16, activation: 'softmax' })
+                        ]
+                    });
+
+                    this.model.compile({
+                        optimizer: 'adam',
+                        loss: 'categoricalCrossentropy',
+                        metrics: ['accuracy']
+                    });
+
+                    console.log('TensorFlow.js model initialized');
+                } catch (error) {
+                    console.log('ML initialization error:', error);
+                }
+            }
+
+            setupEventListeners() {
+                this.editor.addEventListener('input', (e) => {
+                    this.handleCodeInput(e);
+                    this.learnFromCode(e.target.value);
+                });
+
+                this.editor.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.insertTab();
+                    } else if (e.key === 'Enter' && this.suggestions.style.display === 'block') {
+                        const activeItem = this.suggestions.querySelector('.suggestion-item:hover');
+                        if (activeItem) {
+                            e.preventDefault();
+                            this.applySuggestion(activeItem.textContent);
+                        }
+                    }
+                });
+
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.chatInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
+                    }
+                });
+
+                this.languageSelect.addEventListener('change', (e) => {
+                    this.currentLanguage = e.target.value;
+                    this.applySyntaxHighlighting();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!this.suggestions.contains(e.target)) {
+                        this.hideSuggestions();
+                    }
+                });
+            }
+
+            handleCodeInput(event) {
+                const code = event.target.value;
+                const cursorPos = event.target.selectionStart;
+                
+                this.applySyntaxHighlighting();
+                this.showSmartSuggestions(code, cursorPos);
+            }
+
+            applySyntaxHighlighting() {
+                // Simple syntax highlighting for demonstration
+                // In a real implementation, you'd use a proper syntax highlighter
+                const code = this.editor.value;
+                const keywords = {
+                    javascript: ['function', 'var', 'let', 'const', 'if', 'else', 'for', 'while', 'return', 'class', 'import', 'export'],
+                    python: ['def', 'class', 'if', 'else', 'elif', 'for', 'while', 'import', 'from', 'return', 'try', 'except'],
+                    java: ['public', 'private', 'class', 'interface', 'if', 'else', 'for', 'while', 'return', 'import', 'package']
+                };
+
+                // This is a simplified version - real syntax highlighting would be more complex
+                console.log(`Syntax highlighting applied for ${this.currentLanguage}`);
+            }
+
+            showSmartSuggestions(code, cursorPos) {
+                const currentWord = this.getCurrentWord(code, cursorPos);
+                
+                if (currentWord.length < 2) {
+                    this.hideSuggestions();
+                    return;
+                }
+
+                const suggestions = this.generateSuggestions(currentWord, code);
+                
+                if (suggestions.length > 0) {
+                    this.displaySuggestions(suggestions, cursorPos);
+                } else {
+                    this.hideSuggestions();
+                }
+            }
+
+            getCurrentWord(code, cursorPos) {
+                const beforeCursor = code.substring(0, cursorPos);
+                const match = beforeCursor.match(/[a-zA-Z_][a-zA-Z0-9_]*$/);
+                return match ? match[0] : '';
+            }
+
+            generateSuggestions(currentWord, fullCode) {
+                const suggestions = [];
+                
+                // Get language-specific suggestions
+                const languageSuggestions = this.getLanguageSuggestions(currentWord);
+                suggestions.push(...languageSuggestions);
+
+                // Get personalized suggestions based on learning
+                const personalizedSuggestions = this.getPersonalizedSuggestions(currentWord, fullCode);
+                suggestions.push(...personalizedSuggestions);
+
+                // Remove duplicates and sort by relevance
+                const uniqueSuggestions = [...new Set(suggestions)];
+                return uniqueSuggestions.slice(0, 8);
+            }
+
+            getLanguageSuggestions(word) {
+                const suggestions = {
+                    javascript: {
+                        'fun': ['function', 'functionName'],
+                        'con': ['console.log', 'const', 'constructor'],
+                        'ret': ['return'],
+                        'if': ['if (condition)', 'if...else'],
+                        'for': ['for (let i = 0; i < length; i++)', 'forEach'],
+                        'cla': ['class', 'className'],
+                        'doc': ['document.getElementById', 'document.querySelector'],
+                        'arr': ['Array.from', 'array.map', 'array.filter']
+                    },
+                    python: {
+                        'def': ['def function_name():', 'def __init__(self):'],
+                        'pri': ['print()', 'print(f"")'],
+                        'imp': ['import', 'import numpy as np'],
+                        'for': ['for item in list:', 'for i in range():'],
+                        'cla': ['class ClassName:', 'class ClassName(object):'],
+                        'try': ['try:', 'try...except'],
+                        'whi': ['while condition:', 'while True:']
+                    }
+                };
+
+                const langSuggestions = suggestions[this.currentLanguage] || {};
+                const matchingKeys = Object.keys(langSuggestions).filter(key => 
+                    key.startsWith(word.toLowerCase())
+                );
+
+                return matchingKeys.flatMap(key => langSuggestions[key]);
+            }
+
+            getPersonalizedSuggestions(word, fullCode) {
+                const suggestions = [];
+                
+                // Analyze user's coding patterns
+                for (const [pattern, frequency] of this.codePatterns) {
+                    if (pattern.toLowerCase().startsWith(word.toLowerCase()) && frequency > 2) {
+                        suggestions.push(pattern);
+                    }
+                }
+
+                // Context-aware suggestions based on current code
+                const contextSuggestions = this.getContextualSuggestions(word, fullCode);
+                suggestions.push(...contextSuggestions);
+
+                return suggestions.sort((a, b) => 
+                    (this.codePatterns.get(b) || 0) - (this.codePatterns.get(a) || 0)
+                );
+            }
+
+            getContextualSuggestions(word, code) {
+                const suggestions = [];
+                
+                // If inside a function, suggest common function patterns
+                if (code.includes('function') && word.startsWith('ret')) {
+                    suggestions.push('return result;', 'return null;', 'return false;');
+                }
+
+                // If there are variables defined, suggest them
+                const variableMatches = code.match(/(?:let|const|var)\s+([a-zA-Z_][a-zA-Z0-9_]*)/g);
+                if (variableMatches) {
+                    variableMatches.forEach(match => {
+                        const varName = match.split(/\s+/)[1];
+                        if (varName.toLowerCase().startsWith(word.toLowerCase())) {
+                            suggestions.push(varName);
+                        }
+                    });
+                }
+
+                return suggestions;
+            }
+
+            displaySuggestions(suggestions, cursorPos) {
+                this.suggestions.innerHTML = '';
+                
+                suggestions.forEach(suggestion => {
+                    const item = document.createElement('div');
+                    item.className = 'suggestion-item';
+                    
+                    const type = document.createElement('span');
+                    type.className = 'suggestion-type';
+                    type.textContent = this.getSuggestionType(suggestion);
+                    
+                    const text = document.createElement('span');
+                    text.textContent = suggestion;
+                    
+                    item.appendChild(type);
+                    item.appendChild(text);
+                    
+                    item.addEventListener('click', () => {
+                        this.applySuggestion(suggestion);
+                    });
+                    
+                    this.suggestions.appendChild(item);
+                });
+
+                // Position suggestions near cursor
+                const rect = this.editor.getBoundingClientRect();
+                this.suggestions.style.left = rect.left + 20 + 'px';
+                this.suggestions.style.top = rect.top + 60 + 'px';
+                this.suggestions.style.display = 'block';
+            }
+
+            getSuggestionType(suggestion) {
+                if (suggestion.includes('function') || suggestion.includes('def')) return 'FN';
+                if (suggestion.includes('class')) return 'CL';
+                if (suggestion.includes('for') || suggestion.includes('while')) return 'LP';
+                if (suggestion.includes('if')) return 'IF';
+                if (suggestion.includes('import')) return 'IM';
+                return 'KW';
+            }
+
+            applySuggestion(suggestion) {
+                const cursorPos = this.editor.selectionStart;
+                const code = this.editor.value;
+                const currentWord = this.getCurrentWord(code, cursorPos);
+                
+                const beforeWord = code.substring(0, cursorPos - currentWord.length);
+                const afterCursor = code.substring(cursorPos);
+                
+                this.editor.value = beforeWord + suggestion + afterCursor;
+                this.editor.focus();
+                
+                const newCursorPos = beforeWord.length + suggestion.length;
+                this.editor.setSelectionRange(newCursorPos, newCursorPos);
+                
+                this.hideSuggestions();
+                this.learnFromSuggestion(suggestion);
+            }
+
+            hideSuggestions() {
+                this.suggestions.style.display = 'none';
+            }
+
+            insertTab() {
+                const start = this.editor.selectionStart;
+                const end = this.editor.selectionEnd;
+                const value = this.editor.value;
+                
+                this.editor.value = value.substring(0, start) + '    ' + value.substring(end);
+                this.editor.selectionStart = this.editor.selectionEnd = start + 4;
+            }
+
+            learnFromCode(code) {
+                // Extract patterns and learn from user's coding style
+                const patterns = this.extractPatterns(code);
+                
+                patterns.forEach(pattern => {
+                    const count = this.codePatterns.get(pattern) || 0;
+                    this.codePatterns.set(pattern, count + 1);
+                });
+
+                // Update learning progress
+                this.learningProgress = Math.min(100, this.codePatterns.size * 2);
+                this.updateLearningProgress();
+            }
+
+            extractPatterns(code) {
+                const patterns = [];
+                
+                // Extract function names
+                const functions = code.match(/function\s+([a-zA-Z_][a-zA-Z0-9_]*)/g);
+                if (functions) patterns.push(...functions);
+
+                // Extract variable names
+                const variables = code.match(/(?:let|const|var)\s+([a-zA-Z_][a-zA-Z0-9_]*)/g);
+                if (variables) patterns.push(...variables);
+
+                // Extract method calls
+                const methods = code.match(/([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g);
+                if (methods) patterns.push(...methods);
+
+                // Extract common code structures
+                const structures = code.match(/(if|for|while|try|catch|function|class)\s*[\(\{]/g);
+                if (structures) patterns.push(...structures);
+
+                return patterns;
+            }
+
+            learnFromSuggestion(suggestion) {
+                // Reinforce learning when user accepts a suggestion
+                const count = this.codePatterns.get(suggestion) || 0;
+                this.codePatterns.set(suggestion, count + 3); // Higher weight for accepted suggestions
+            }
+
+            updateLearningProgress() {
+                this.progressFill.style.width = this.learningProgress + '%';
+                this.learningPercent.textContent = Math.round(this.learningProgress) + '%';
+            }
+
+            async sendMessage() {
+                const message = this.chatInput.value.trim();
+                if (!message) return;
+
+                this.addMessage(message, 'user');
+                this.chatInput.value = '';
+                this.sendButton.disabled = true;
+
+                this.showTypingIndicator();
+
+                // Simulate AI response with delay
+                setTimeout(() => {
+                    const response = this.generateAIResponse(message);
+                    this.hideTypingIndicator();
+                    this.addMessage(response, 'ai');
+                    this.sendButton.disabled = false;
+                }, 1000 + Math.random() * 2000);
+            }
+
+            generateAIResponse(message) {
+                const lowerMessage = message.toLowerCase();
+                
+                // Context-aware responses based on current code
+                const currentCode = this.editor.value;
+                
+                if (lowerMessage.includes('error') || lowerMessage.includes('bug')) {
+                    return this.generateErrorHelp(currentCode);
+                } else if (lowerMessage.includes('optimize') || lowerMessage.includes('improve')) {
+                    return this.generateOptimizationSuggestions(currentCode);
+                } else if (lowerMessage.includes('explain') || lowerMessage.includes('what does')) {
+                    return this.generateCodeExplanation(currentCode, message);
+                } else if (lowerMessage.includes('suggest') || lowerMessage.includes('recommend')) {
+                    return this.generateRecommendations(currentCode);
+                } else if (lowerMessage.includes('best practice') || lowerMessage.includes('convention')) {
+                    return this.generateBestPractices(this.currentLanguage);
+                } else {
+                    return this.generateGeneralResponse(message);
+                }
+            }
+
+            generateErrorHelp(code) {
+                const responses = [
+                    "I can help you debug! Common issues I notice: missing semicolons, unclosed brackets, or undefined variables. Would you like me to analyze your specific code?",
+                    "Let me help you troubleshoot. I see you're working with " + this.currentLanguage + ". What error message are you getting?",
+                    "Debugging tip: Try using console.log() statements to track variable values, or check the browser's developer console for specific error messages."
+                ];
+                return responses[Math.floor(Math.random() * responses.length)];
+            }
+
+            generateOptimizationSuggestions(code) {
+                const suggestions = [
+                    "Based on your code patterns, consider using array methods like map() and filter() instead of traditional loops for better readability.",
+                    "I notice some repeated code patterns. You could refactor these into reusable functions to follow the DRY principle.",
+                    "For better performance, consider using const instead of let when variables don't change, and avoid nested loops where possible."
+                ];
+                return suggestions[Math.floor(Math.random() * suggestions.length)];
+            }
+
+            generateCodeExplanation(code, question) {
+                return "I'd be happy to explain your code! From what I can see, you're working with " + this.currentLanguage + ". Could you highlight the specific part you'd like me to explain?";
+            }
+
+            generateRecommendations(code) {
+                const recs = [
+                    "Based on your coding style, I recommend exploring ES6+ features like arrow functions, destructuring, and template literals.",
+                    "I've learned from your patterns - you might benefit from using async/await for handling promises more cleanly.",
+                    "Consider adding error handling with try-catch blocks for more robust code, especially around API calls or file operations."
+                ];
+                return recs[Math.floor(Math.random() * recs.length)];
+            }
+
+            generateBestPractices(language) {
+                const practices = {
+                    javascript: "JavaScript best practices: Use strict mode, prefer const/let over var, use meaningful variable names, and leverage modern ES6+ features.",
+                    python: "Python best practices: Follow PEP 8 style guide, use list comprehensions when appropriate, and implement proper error handling.",
+                    java: "Java best practices: Follow naming conventions, use appropriate access modifiers, and implement proper exception handling."
+                };
+                return practices[language] || "I can provide best practices for your specific language. What would you like to know about?";
+            }
+
+            generateGeneralResponse(message) {
+                const responses = [
+                    "I'm here to help with your coding! I've been learning from your patterns and can provide personalized suggestions.",
+                    "Feel free to ask me about code optimization, debugging, or best practices. I'm continuously learning from your coding style!",
+                    "I can help explain code concepts, suggest improvements, or assist with debugging. What would you like to work on?",
+                    "Based on my analysis of your code, I can provide tailored suggestions. What specific help do you need?"
+                ];
+                return responses[Math.floor(Math.random() * responses.length)];
+            }
+
+            addMessage(content, sender) {
+                const message = document.createElement('div');
+                message.className = `message ${sender}`;
+                
+                const messageContent = document.createElement('div');
+                messageContent.className = 'message-content';
+                messageContent.textContent = content;
+                
+                const messageTime = document.createElement('div');
+                messageTime.className = 'message-time';
+                messageTime.textContent = new Date().toLocaleTimeString();
+                
+                message.appendChild(messageContent);
+                message.appendChild(messageTime);
+                
+                this.chatMessages.appendChild(message);
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+
+            showTypingIndicator() {
+                this.typingIndicator.style.display = 'block';
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+
+            hideTypingIndicator() {
+                this.typingIndicator.style.display = 'none';
+            }
+
+            loadSavedData() {
+                // In a real app, this would load from a database
+                // For demo, we'll initialize with some sample patterns
+                const samplePatterns = new Map([
+                    ['console.log', 5],
+                    ['function', 8],
+                    ['if (', 12],
+                    ['for (', 6],
+                    ['return', 10]
+                ]);
+                this.codePatterns = samplePatterns;
+                this.learningProgress = 25;
+                this.updateLearningProgress();
+            }
+
+            startLearning() {
+                // Simulate continuous learning process
+                setInterval(() => {
+                    if (this.learningProgress < 100) {
+                        this.learningProgress += 0.1;
+                        this.updateLearningProgress();
+                    }
+                }, 5000);
+            }
+
+            async trainModel() {
+                if (!this.model || this.learningData.length < 10) return;
+
+                try {
+                    // Convert learning data to tensors for training
+                    const inputs = this.learningData.map(data => this.vectorizeCode(data.input));
+                    const outputs = this.learningData.map(data => this.vectorizeOutput(data.output));
+
+                    const xs = tf.tensor2d(inputs);
+                    const ys = tf.tensor2d(outputs);
+
+                    // Train the model
+                    await this.model.fit(xs, ys, {
+                        epochs: 5,
+                        batchSize: 32,
+                        validationSplit: 0.2,
+                        verbose: 0
+                    });
+
+                    xs.dispose();
+                    ys.dispose();
+
+                    console.log('Model training completed');
+                } catch (error) {
+                    console.log('Training error:', error);
+                }
+            }
+
+            vectorizeCode(code) {
+                // Simple vectorization - in production, use more sophisticated NLP
+                const vector = new Array(100).fill(0);
+                const words = code.toLowerCase().split(/\W+/);
+                
+                const commonTokens = [
+                    'function', 'var', 'let', 'const', 'if', 'else', 'for', 'while',
+                    'return', 'class', 'import', 'export', 'async', 'await', 'try',
+                    'catch', 'throw', 'new', 'this', 'super', 'extends', 'implements'
+                ];
+
+                words.forEach((word, idx) => {
+                    const tokenIndex = commonTokens.indexOf(word);
+                    if (tokenIndex !== -1 && idx < vector.length) {
+                        vector[tokenIndex] += 1;
+                    }
+                });
+
+                return vector;
+            }
+
+            vectorizeOutput(output) {
+                // Convert suggestions to one-hot encoded vectors
+                const vector = new Array(16).fill(0);
+                const hash = this.simpleHash(output) % 16;
+                vector[hash] = 1;
+                return vector;
+            }
+
+            simpleHash(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash; // Convert to 32-bit integer
+                }
+                return Math.abs(hash);
+            }
+
+            saveProgress() {
+                // In a real application, this would save to a backend
+                const progressData = {
+                    patterns: Array.from(this.codePatterns.entries()),
+                    progress: this.learningProgress,
+                    language: this.currentLanguage,
+                    timestamp: Date.now()
+                };
+                
+                console.log('Progress saved:', progressData);
+            }
+
+            // Advanced code analysis features
+            analyzeCodeComplexity(code) {
+                const lines = code.split('\n').filter(line => line.trim());
+                const cyclomaticComplexity = this.calculateCyclomaticComplexity(code);
+                
+                return {
+                    linesOfCode: lines.length,
+                    cyclomaticComplexity,
+                    maintainabilityIndex: this.calculateMaintainabilityIndex(code)
+                };
+            }
+
+            calculateCyclomaticComplexity(code) {
+                const controlStructures = [
+                    /if\s*\(/g, /else\s+if\s*\(/g, /while\s*\(/g, /for\s*\(/g,
+                    /catch\s*\(/g, /case\s+/g, /&&/g, /\|\|/g
+                ];
+                
+                let complexity = 1; // Base complexity
+                
+                controlStructures.forEach(pattern => {
+                    const matches = code.match(pattern);
+                    if (matches) {
+                        complexity += matches.length;
+                    }
+                });
+
+                return complexity;
+            }
+
+            calculateMaintainabilityIndex(code) {
+                const loc = code.split('\n').length;
+                const complexity = this.calculateCyclomaticComplexity(code);
+                const halsteadVolume = this.calculateHalsteadVolume(code);
+                
+                // Simplified maintainability index calculation
+                return Math.max(0, (171 - 5.2 * Math.log(halsteadVolume) - 0.23 * complexity - 16.2 * Math.log(loc)) * 100 / 171);
+            }
+
+            calculateHalsteadVolume(code) {
+                const operators = code.match(/[+\-*/=<>!&|(){}\[\];,.:]/g) || [];
+                const operands = code.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+                
+                const uniqueOperators = new Set(operators).size || 1;
+                const uniqueOperands = new Set(operands).size || 1;
+                const totalOperators = operators.length || 1;
+                const totalOperands = operands.length || 1;
+                
+                const vocabulary = uniqueOperators + uniqueOperands;
+                const length = totalOperators + totalOperands;
+                
+                return length * Math.log2(vocabulary);
+            }
+
+            // Smart code formatting
+            formatCode(code, language) {
+                switch (language) {
+                    case 'javascript':
+                        return this.formatJavaScript(code);
+                    case 'python':
+                        return this.formatPython(code);
+                    default:
+                        return code;
+                }
+            }
+
+            formatJavaScript(code) {
+                // Basic JavaScript formatting
+                return code
+                    .replace(/\{\s*\n/g, '{\n')
+                    .replace(/;\s*\n/g, ';\n')
+                    .replace(/,\s*\n/g, ',\n')
+                    .replace(/\n\s*\}/g, '\n}');
+            }
+
+            formatPython(code) {
+                // Basic Python formatting
+                return code
+                    .replace(/:\s*\n/g, ':\n')
+                    .replace(/,\s*\n/g, ',\n');
+            }
+
+            // Export and import functionality
+            exportCode() {
+                const codeData = {
+                    code: this.editor.value,
+                    language: this.currentLanguage,
+                    timestamp: new Date().toISOString(),
+                    patterns: Array.from(this.codePatterns.entries())
+                };
+
+                const blob = new Blob([JSON.stringify(codeData, null, 2)], {
+                    type: 'application/json'
+                });
+
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `code-${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            // Initialize theme customization
+            initializeThemes() {
+                const themes = {
+                    dark: {
+                        background: '#0d1117',
+                        foreground: '#c9d1d9',
+                        accent: '#58a6ff'
+                    },
+                    light: {
+                        background: '#ffffff',
+                        foreground: '#24292f',
+                        accent: '#0969da'
+                    },
+                    cyberpunk: {
+                        background: '#0a0a0a',
+                        foreground: '#00ff41',
+                        accent: '#ff0080'
+                    }
+                };
+
+                // Theme switching could be implemented here
+                return themes;
+            }
+        }
+
+        // Initialize the AI Code Editor when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const editor = new AICodeEditor();
+            
+            // Add some demo functionality
+            setTimeout(() => {
+                editor.addMessage("Welcome! I've analyzed your coding patterns and I'm ready to provide personalized suggestions. Try typing some code to see AI-powered completions!", 'ai');
+            }, 2000);
+
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    switch (e.key) {
+                        case 's':
+                            e.preventDefault();
+                            editor.saveProgress();
+                            editor.addMessage("Code progress saved!", 'ai');
+                            break;
+                        case 'e':
+                            e.preventDefault();
+                            editor.exportCode();
+                            break;
+                        case '/':
+                            e.preventDefault();
+                            document.getElementById('chatInput').focus();
+                            break;
+                    }
+                }
+            });
+
+            // Simulate learning progress
+            let learningInterval = setInterval(() => {
+                if (editor.codePatterns.size > 0) {
+                    const randomPattern = Array.from(editor.codePatterns.keys())[
+                        Math.floor(Math.random() * editor.codePatterns.size)
+                    ];
+                    editor.learningData.push({
+                        input: randomPattern,
+                        output: 'suggestion_' + Math.random()
+                    });
+
+                    if (editor.learningData.length % 10 === 0) {
+                        editor.trainModel();
+                    }
+                }
+            }, 10000);
+
+            // Add welcome animation
+            setTimeout(() => {
+                const aiIndicator = document.querySelector('.ai-indicator');
+                aiIndicator.style.animation = 'pulse 1s infinite';
+            }, 1000);
+        });
+
+        // Add some utility functions for enhanced functionality
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function throttle(func, limit) {
+            let inThrottle;
+            return function() {
+                const args = arguments;
+                const context = this;
+                if (!inThrottle) {
+                    func.apply(context, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            }
+        }
+
+        // Performance optimization
+        const optimizedHandleInput = debounce((editor, event) => {
+            editor.handleCodeInput(event);
+        }, 150);
+
+        // Add accessibility features
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.key === 'h') {
+                // Show help dialog
+                alert('AI Code Editor Help:\n\nCtrl+S: Save progress\nCtrl+E: Export code\nCtrl+/: Focus chat\nTab: Insert 4 spaces\nEsc: Hide suggestions');
+            }
+        });
+    </script>
+</body>
+</html>
